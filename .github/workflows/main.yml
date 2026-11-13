@@ -13,8 +13,9 @@ jobs:
           export DEVKITPPC=$DEVKITPRO/devkitPPC
           export PATH=$DEVKITPPC/bin:$PATH
 
-          # 1. Gera o payload.png embutindo o boot.elf
+          # 1. Libera o limite de largura do ImageMagick e gera o payload.png com o boot.elf
           cd payload
+          sed -i 's/convert -depth 8/convert -limit width 10000000 -limit area 100000000 -depth 8/' make_it.sh
           chmod +x make_it.sh
           ./make_it.sh ../boot.elf
           cd ..
