@@ -2,25 +2,19 @@ name: Build str2hax USA
 on: [workflow_dispatch, push]
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - name: Baixar codigo limpo do str2hax
-        run: |
-          git clone https://github.com src
-          cd src
-          cat create.sh
-          head -n 45 chain_builder.c
+      - uses: actions/checkout@v4
       - name: Compilar index.html completo para USA
         run: |
-          sudo apt-get update && sudo apt-get install -y gcc libgmp-dev xxd python3
-          cd src
+          sudo apt-get update && sudo apt-get install -y gcc libgmp-dev python3
           sed -i 's/EUR/USA/g; s/JAP/USA/g; s/KOR/USA/g' chain_builder.c
           gcc chain_builder.c -lgmp -O2 -o chain_builder
-          ./chain_builder U > chain.txt || ./chain_builder USA > chain.txt || ./chain_builder 0 > chain.txt || ./chain_builder > chain.txt
+          ./chain_builder U > chain.txt || ./chain_builder USA > chain.txt || ./chain_builder > chain.txt
           python3 -c '
           html = open("index.html").read()
           chain = open("chain.txt").read().strip()
-          print("Tamanho da chain:", len(chain))
+          print("Tamanho gerado:", len(chain))
           if len(chain) > 10000:
               open("index.html", "w").write(html.replace("INSERT_HERE", chain))
           '
@@ -29,4 +23,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: str2hax-USA-completo
-          path: src/index.html
+          path: index.html
