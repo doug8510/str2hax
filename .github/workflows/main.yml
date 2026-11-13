@@ -9,18 +9,16 @@ jobs:
       - name: Compilar str2hax 100% Offline (4.3U)
         run: |
           apt-get update && apt-get install -y gcc make xxd libgmp-dev zlib1g-dev imagemagick zip
+          rm -f /etc/ImageMagick-*/policy.xml
           export DEVKITPRO=/opt/devkitpro
           export DEVKITPPC=$DEVKITPRO/devkitPPC
           export PATH=$DEVKITPPC/bin:$PATH
 
-          # 1. Libera o limite de largura do ImageMagick e gera o payload.png com o boot.elf
           cd payload
-          sed -i 's/convert -depth 8/convert -limit width 10000000 -limit area 100000000 -depth 8/' make_it.sh
           chmod +x make_it.sh
           ./make_it.sh ../boot.elf
           cd ..
 
-          # 2. Compila o exploit HTML e o loader
           mkdir -p build
           cd build
           gcc -g ../chain_builder.c -o chain_builder
@@ -42,7 +40,6 @@ jobs:
           echo \\ >> output.bin
           sed -i '/INSERT_HERE/ { r output.bin; d }' index.html
 
-          # 3. Empacota tudo pronto para o XAMPP
           mkdir -p ../site/eula/049/
           cp index.html ../site/eula/049/en.html
           cp ../payload/payload.png ../site/eula/049/
