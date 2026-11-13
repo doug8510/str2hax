@@ -1,4 +1,4 @@
-name: Build str2hax USA Offline
+name: Build str2hax USA Offline IP
 on: [workflow_dispatch, push]
 jobs:
   build:
@@ -6,21 +6,31 @@ jobs:
     container: devkitpro/devkitppc:latest
     steps:
       - uses: actions/checkout@v4
-      - name: Compilar str2hax 100% Offline (4.3U)
+      - name: Compilar str2hax Offline apontando para 192.168.0.109
         run: |
           set -e
-          apt-get update && apt-get install -y gcc make xxd libgmp-dev zlib1g-dev python3 zip
+          apt-get update && apt-get install -y gcc make xxd libgmp-dev zlib1g-dev python3 git zip
           export DEVKITPRO=/opt/devkitpro
           export DEVKITPPC=$DEVKITPRO/devkitPPC
           export PATH=$DEVKITPPC/bin:$PATH
 
+          # 1. Baixa o WiiNetworkLoader oficial e aponta direto para o IP do XAMPP
+          git clone https://github.com netloader
+          cd netloader
+          sed -i 's/bootmii.org/192.168.0.109/g' source/*.c
+          sed -i 's/://hackmii.com' source/*.c
+          sed -i 's|/2/boot.elf|/boot.elf|g' source/*.c
+          make
+          cd ..
+
+          # 2. Gera o payload.png leve a partir do WiiNetworkLoader.elf compilado
           cd payload
           gcc -g zpipe.c -o zpipe -lz
           gcc -g convert_payload.c -o convert_payload
           gcc -g pack_payload.c -o pack_payload
-          ./zpipe < ../boot.elf > boot.elf.zlib
-          truncate -s %4 boot.elf.zlib
-          ./pack_payload PONY boot.elf.zlib payload.bin
+          ./zpipe < ../netloader/WiiNetworkLoader.elf > loader.zlib
+          truncate -s %4 loader.zlib
+          ./pack_payload PONY loader.zlib payload.bin
           ./convert_payload payload.bin out.bin
           python3 -c '
           import struct, zlib
@@ -33,9 +43,10 @@ jobs:
           png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
           open("payload.png", "wb").write(png)
           '
-          rm -f boot.elf.zlib payload.bin out.bin
+          rm -f loader.zlib payload.bin out.bin
           cd ..
 
+          # 3. Compila o exploit HTML e o loaderstub
           mkdir -p build
           cd build
           gcc -g ../chain_builder.c -o chain_builder
@@ -57,6 +68,7 @@ jobs:
           echo '\' >> output.bin
           sed -i -e '/INSERT_HERE/r output.bin' -e '/INSERT_HERE/d' index.html
 
+          # 4. Empacota tudo pronto para o XAMPP
           mkdir -p ../site/eula/049/
           cp index.html ../site/eula/049/en.html
           cp ../payload/payload.png ../site/eula/049/
@@ -66,5 +78,5 @@ jobs:
       - name: Salvar site.zip
         uses: actions/upload-artifact@v4
         with:
-          name: str2hax-USA-offline
+          name: str2hax-USA-offline-IP
           path: site.zip
