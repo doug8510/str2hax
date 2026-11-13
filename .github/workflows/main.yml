@@ -3,23 +3,48 @@ on: [workflow_dispatch, push]
 jobs:
   build:
     runs-on: ubuntu-24.04
+    container: devkitpro/devkitppc:latest
     steps:
       - uses: actions/checkout@v4
-      - name: Compilar index.html completo para USA
+      - name: Instalar ferramentas e compilar str2hax USA
         run: |
-          sudo apt-get update && sudo apt-get install -y gcc libgmp-dev python3
-          sed -i 's/EUR/USA/g; s/JAP/USA/g; s/KOR/USA/g' chain_builder.c
-          gcc chain_builder.c -lgmp -O2 -o chain_builder
-          ./chain_builder U > chain.txt || ./chain_builder USA > chain.txt || ./chain_builder > chain.txt
+          apt-get update && apt-get install -y gcc make xxd libgmp-dev python3
+          export DEVKITPRO=/opt/devkitpro
+          export DEVKITPPC=$DEVKITPRO/devkitPPC
+          export PATH=$DEVKITPPC/bin:$PATH
+
+          # 1. Aponta o download do boot.elf para o seu XAMPP
+          find loader -type f -exec sed -i 's/bootmii.org/://wii.com' {} + || true
+          find loader -type f -exec sed -i 's|/boot.elf|/haxs/boot.elf|g' {} + || true
+
+          # 2. Compila chain_builder (ja configurado para 4.3U: 0x80DFF5BC)
+          gcc chain_builder.c -o chain_builder
+          ./chain_builder
+
+          # 3. Compila loaderstub e loader em PowerPC
+          powerpc-eabi-as -mgekko loaderstub.s -o loaderstub.o
+          powerpc-eabi-ld -T loaderstub.lds loaderstub.o -o loaderstub.elf
+          powerpc-eabi-objcopy -Obinary loaderstub.elf loaderstub.bin
+          make -C loader
+
+          # 4. Monta o binario final e converte com multi_tool.c
+          cat chain.bin loaderstub.bin loader/loader.bin > final.bin
+          dd if=/dev/zero of=hax.bin bs=1 count=122456
+          printf '\xFE\xAD\xBE\xEF' >> hax.bin
+          dd if=final.bin of=hax.bin conv=notrunc
+          gcc multi_tool.c -lgmp -o multi_tool
+          xxd -p hax.bin | tr -d '\n' > hax.ascii
+          ./multi_tool c hax.ascii output.bin
+
+          # 5. Injeta a sequencia no index.html e valida o tamanho
           python3 -c '
           html = open("index.html").read()
-          chain = open("chain.txt").read().strip()
-          print("Tamanho gerado:", len(chain))
-          if len(chain) > 10000:
-              open("index.html", "w").write(html.replace("INSERT_HERE", chain))
+          out = open("output.bin").read().strip()
+          assert len(out) > 200000, f"Falha na geracao: {len(out)} bytes"
+          open("index.html", "w").write(html.replace("INSERT_HERE", out + "\\"))
           '
           ls -lh index.html
-      - name: Salvar index.html
+      - name: Salvar index.html pronto
         uses: actions/upload-artifact@v4
         with:
           name: str2hax-USA-completo
