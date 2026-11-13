@@ -8,17 +8,30 @@ jobs:
       - uses: actions/checkout@v4
       - name: Compilar str2hax 100% Offline (4.3U)
         run: |
+          set -e
           apt-get update && apt-get install -y gcc make xxd libgmp-dev zlib1g-dev imagemagick zip
           rm -f /etc/ImageMagick-*/policy.xml
           export DEVKITPRO=/opt/devkitpro
           export DEVKITPPC=$DEVKITPRO/devkitPPC
           export PATH=$DEVKITPPC/bin:$PATH
 
+          # 1. Compila os utilitarios do payload e gera payload.png com largura 1024px
           cd payload
-          chmod +x make_it.sh
-          ./make_it.sh ../boot.elf
+          gcc -g zpipe.c -o zpipe -lz
+          gcc -g convert_payload.c -o convert_payload
+          gcc -g pack_payload.c -o pack_payload
+          ./zpipe < ../boot.elf > boot.elf.zlib
+          truncate -s %4 boot.elf.zlib
+          ./pack_payload PONY boot.elf.zlib payload.bin
+          ./convert_payload payload.bin out.bin
+          # Ajusta o tamanho para multiplo de 4096 bytes (1024 pixels RGBA por linha)
+          truncate -s %4096 out.bin
+          HEIGHT=$(( $(stat -c%s out.bin) / 4096 ))
+          convert -depth 8 -size 1024x${HEIGHT}+0 rgba:out.bin payload.png
+          rm -f boot.elf.zlib payload.bin out.bin
           cd ..
 
+          # 2. Compila o exploit HTML e o loader
           mkdir -p build
           cd build
           gcc -g ../chain_builder.c -o chain_builder
@@ -40,6 +53,7 @@ jobs:
           echo \\ >> output.bin
           sed -i '/INSERT_HERE/ { r output.bin; d }' index.html
 
+          # 3. Empacota tudo pronto para o XAMPP
           mkdir -p ../site/eula/049/
           cp index.html ../site/eula/049/en.html
           cp ../payload/payload.png ../site/eula/049/
