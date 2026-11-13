@@ -5,17 +5,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Compilar index.html para USA
+      - name: Compilar index.html completo para USA
         run: |
-          sudo apt-get update && sudo apt-get install -y gcc libgmp-dev zip
-          sed -i 's/EUR/USA/g; s/JAP/USA/g; s/KOR/USA/g' chain_builder.c
+          sudo apt-get update && sudo apt-get install -y gcc libgmp-dev python3
           gcc chain_builder.c -lgmp -O2 -o chain_builder
-          ./chain_builder > chain.txt || ./chain_builder
-          ls -la
-      - name: Salvar arquivos
+          ./chain_builder U > chain.txt || ./chain_builder USA > chain.txt || ./chain_builder > chain.txt
+          python3 -c '
+          html = open("index.html").read()
+          chain = open("chain.txt").read().strip()
+          assert len(chain) > 100000, f"Chain vazia! Tamanho: {len(chain)}"
+          open("index.html", "w").write(html.replace("INSERT_HERE", chain))
+          '
+          ls -lh index.html
+      - name: Salvar index.html pronto
         uses: actions/upload-artifact@v4
         with:
-          name: str2hax-USA
-          path: |
-            index.html
-            chain*
+          name: str2hax-USA-completo
+          path: index.html
