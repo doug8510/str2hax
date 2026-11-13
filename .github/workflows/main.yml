@@ -1,4 +1,4 @@
-name: Build str2hax USA
+name: Build str2hax USA Offline
 on: [workflow_dispatch, push]
 jobs:
   build:
@@ -6,13 +6,20 @@ jobs:
     container: devkitpro/devkitppc:latest
     steps:
       - uses: actions/checkout@v4
-      - name: Compilar str2hax oficial (4.3U)
+      - name: Compilar str2hax 100% Offline (4.3U)
         run: |
-          apt-get update && apt-get install -y gcc make xxd libgmp-dev zip
+          apt-get update && apt-get install -y gcc make xxd libgmp-dev zlib1g-dev imagemagick zip
           export DEVKITPRO=/opt/devkitpro
           export DEVKITPPC=$DEVKITPRO/devkitPPC
           export PATH=$DEVKITPPC/bin:$PATH
 
+          # 1. Gera o payload.png embutindo o boot.elf
+          cd payload
+          chmod +x make_it.sh
+          ./make_it.sh ../boot.elf
+          cd ..
+
+          # 2. Compila o exploit HTML e o loader
           mkdir -p build
           cd build
           gcc -g ../chain_builder.c -o chain_builder
@@ -33,14 +40,16 @@ jobs:
           cp ../index.html .
           echo \\ >> output.bin
           sed -i '/INSERT_HERE/ { r output.bin; d }' index.html
-          mkdir -p ../site/haxs/
-          cp index.html ../site/haxs/
-          cp ../payload/payload.png ../site/haxs/
-          cp ../rd.png ../site/haxs/
+
+          # 3. Empacota tudo pronto para o XAMPP
+          mkdir -p ../site/eula/049/
+          cp index.html ../site/eula/049/en.html
+          cp ../payload/payload.png ../site/eula/049/
+          cp ../rd.png ../site/eula/049/
           cd ../site
           zip -r -9 ../site.zip .
       - name: Salvar site.zip
         uses: actions/upload-artifact@v4
         with:
-          name: str2hax-USA-oficial
+          name: str2hax-USA-offline
           path: site.zip
