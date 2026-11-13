@@ -1,0 +1,37 @@
+name: Build str2hax USA
+on: [workflow_dispatch, push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar dependencias e devkitPPC
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc make xxd libgmp-dev zip wget xz-utils
+          wget -q https://devkitpro.org -O /tmp/keyring.pkg.tar.xz
+          sudo mkdir -p /usr/share/keyrings
+          tar -xJf /tmp/keyring.pkg.tar.xz -C /tmp
+          sudo mv /tmp/usr/share/keyrings/devkitpro-pub.gpg /usr/share/keyrings/
+          echo "deb [signed-by=/usr/share/keyrings/devkitpro-pub.gpg] https://devkitpro.org stable main" | sudo tee /etc/apt/sources.list.d/devkitpro.list
+          sudo apt-get update
+          sudo apt-get install -y devkitPPC libogc
+      - name: Configurar para regiao USA e servidor local
+        run: |
+          sed -i 's/bootmii.org/://wii.com' loader/source/main.c || true
+          sed -i 's|/boot.elf|/haxs/boot.elf|g' loader/source/main.c || true
+          sed -i 's/EUR/USA/g' chain_builder.c || true
+          sed -i 's/JAP/USA/g' chain_builder.c || true
+          sed -i 's/KOR/USA/g' chain_builder.c || true
+      - name: Compilar str2hax
+        run: |
+          export DEVKITPRO=/opt/devkitpro
+          export DEVKITPPC=$DEVKITPRO/devkitPPC
+          export PATH=$DEVKITPPC/bin:$PATH
+          chmod +x create.sh payload/make_is.sh
+          ./create.sh
+      - name: Salvar site.zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: str2hax-USA
+          path: site.zip
