@@ -9,8 +9,7 @@ jobs:
       - name: Compilar str2hax 100% Offline (4.3U)
         run: |
           set -e
-          apt-get update && apt-get install -y gcc make xxd libgmp-dev zlib1g-dev imagemagick zip
-          rm -f /etc/ImageMagick-*/policy.xml
+          apt-get update && apt-get install -y gcc make xxd libgmp-dev zlib1g-dev python3 zip
           export DEVKITPRO=/opt/devkitpro
           export DEVKITPPC=$DEVKITPRO/devkitPPC
           export PATH=$DEVKITPPC/bin:$PATH
@@ -23,9 +22,17 @@ jobs:
           truncate -s %4 boot.elf.zlib
           ./pack_payload PONY boot.elf.zlib payload.bin
           ./convert_payload payload.bin out.bin
-          truncate -s %4096 out.bin
-          HEIGHT=$(( $(stat -c%s out.bin) / 4096 ))
-          convert -depth 8 -size 1024x${HEIGHT}+0 rgba:out.bin payload.png
+          python3 -c '
+          import struct, zlib
+          data = open("out.bin", "rb").read()
+          width = len(data) // 4
+          raw = b"\x00" + data
+          def chunk(tag, d):
+              return struct.pack(">I", len(d)) + tag + d + struct.pack(">I", zlib.crc32(tag + d) & 0xffffffff)
+          ihdr = struct.pack(">IIBBBBB", width, 1, 8, 6, 0, 0, 0)
+          png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
+          open("payload.png", "wb").write(png)
+          '
           rm -f boot.elf.zlib payload.bin out.bin
           cd ..
 
