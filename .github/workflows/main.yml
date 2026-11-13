@@ -3,19 +3,12 @@ on: [workflow_dispatch, push]
 jobs:
   build:
     runs-on: ubuntu-latest
+    container: devkitpro/devkitppc:latest
     steps:
       - uses: actions/checkout@v4
-      - name: Instalar dependencias e devkitPPC
+      - name: Instalar ferramentas basicas
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc make xxd libgmp-dev zip wget xz-utils
-          wget -q https://devkitpro.org -O /tmp/keyring.pkg.tar.xz
-          sudo mkdir -p /usr/share/keyrings
-          tar -xJf /tmp/keyring.pkg.tar.xz -C /tmp
-          sudo mv /tmp/usr/share/keyrings/devkitpro-pub.gpg /usr/share/keyrings/
-          echo "deb [signed-by=/usr/share/keyrings/devkitpro-pub.gpg] https://devkitpro.org stable main" | sudo tee /etc/apt/sources.list.d/devkitpro.list
-          sudo apt-get update
-          sudo apt-get install -y devkitPPC libogc
+          apt-get update && apt-get install -y gcc make xxd libgmp-dev zip
       - name: Configurar para regiao USA e servidor local
         run: |
           sed -i 's/bootmii.org/://wii.com' loader/source/main.c || true
@@ -25,9 +18,6 @@ jobs:
           sed -i 's/KOR/USA/g' chain_builder.c || true
       - name: Compilar str2hax
         run: |
-          export DEVKITPRO=/opt/devkitpro
-          export DEVKITPPC=$DEVKITPRO/devkitPPC
-          export PATH=$DEVKITPPC/bin:$PATH
           chmod +x create.sh payload/make_is.sh
           ./create.sh
       - name: Salvar site.zip
