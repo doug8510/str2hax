@@ -14,7 +14,7 @@ jobs:
           export DEVKITPPC=$DEVKITPRO/devkitPPC
           export PATH=$DEVKITPPC/bin:$PATH
 
-          # 1. Baixa o WiiNetworkLoader oficial e aponta direto para o IP do XAMPP
+          # 1. Baixa o WiiNetworkLoader e aponta direto para o IP do XAMPP
           git clone https://github.com netloader
           cd netloader
           sed -i 's/bootmii.org/192.168.0.109/g' source/*.c
@@ -23,7 +23,7 @@ jobs:
           make
           cd ..
 
-          # 2. Gera o payload.png leve a partir do WiiNetworkLoader.elf compilado
+          # 2. Gera o payload.png leve a partir do WiiNetworkLoader.elf
           cd payload
           gcc -g zpipe.c -o zpipe -lz
           gcc -g convert_payload.c -o convert_payload
