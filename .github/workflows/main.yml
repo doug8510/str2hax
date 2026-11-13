@@ -9,26 +9,117 @@ jobs:
       - name: Compilar str2hax Offline apontando para 192.168.0.109
         run: |
           set -e
-          apt-get update && apt-get install -y gcc make xxd libgmp-dev zlib1g-dev python3 git zip
+          apt-get update && apt-get install -y gcc make xxd libgmp-dev zlib1g-dev python3 zip
           export DEVKITPRO=/opt/devkitpro
           export DEVKITPPC=$DEVKITPRO/devkitPPC
           export PATH=$DEVKITPPC/bin:$PATH
 
-          # 1. Baixa o WiiNetworkLoader e aponta direto para o IP do XAMPP
-          git clone https://github.com netloader
-          cd netloader
-          sed -i 's/bootmii.org/192.168.0.109/g' source/*.c
-          sed -i 's/://hackmii.com' source/*.c
-          sed -i 's|/2/boot.elf|/boot.elf|g' source/*.c
-          make
-          cd ..
+          # 1. Cria o loader de rede em C apontando diretamente para 192.168.0.109
+          mkdir -p netloader
+          cat << 'EOF' > netloader/main.c
+          #include <stdio.h>
+          #include <stdlib.h>
+          #include <string.h>
+          #include <gccore.h>
+          #include <network.h>
+          #include <unistd.h>
 
-          # 2. Gera o payload.png leve a partir do WiiNetworkLoader.elf
+          static void *xfb = NULL;
+          static GXRModeObj *rmode = NULL;
+
+          int main(int argc, char **argv) {
+              VIDEO_Init();
+              rmode = VIDEO_GetPreferredMode(NULL);
+              xfb = MEM_K0_TO_K1(SYS_AllocateFramebuffer(rmode));
+              console_init(xfb, 20, 20, rmode->fbWidth, rmode->xfbHeight, rmode->fbWidth * VI_DISPLAY_PIX_SZ);
+              VIDEO_Configure(rmode);
+              VIDEO_SetNextFramebuffer(xfb);
+              VIDEO_SetBlack(FALSE);
+              VIDEO_Flush();
+              VIDEO_WaitVSync();
+
+              printf("\n\n  Conectando em 192.168.0.109...\n");
+              char localip[16] = {0}, gateway[16] = {0}, netmask[16] = {0};
+              if (if_config(localip, netmask, gateway, TRUE, 20) < 0) {
+                  printf("  Erro de rede!\n");
+                  while(1) VIDEO_WaitVSync();
+              }
+              printf("  IP Wii: %s\n", localip);
+
+              s32 sock = net_socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+              struct sockaddr_in server;
+              memset(&server, 0, sizeof(server));
+              server.sin_family = AF_INET;
+              server.sin_port = htons(80);
+              inet_aton("192.168.0.109", &server.sin_addr);
+
+              if (net_connect(sock, (struct sockaddr *)&server, sizeof(server)) < 0) {
+                  printf("  Falha ao conectar no XAMPP (192.168.0.109)!\n");
+                  while(1) VIDEO_WaitVSync();
+              }
+
+              const char *req = "GET /boot.elf HTTP/1.0\r\nHost: 192.168.0.109\r\n\r\n";
+              net_send(sock, req, strlen(req), 0);
+
+              u8 *buf = (u8 *)0x90100000;
+              u32 total = 0;
+              int r;
+              while ((r = net_recv(sock, buf + total, 4096, 0)) > 0) {
+                  total += r;
+              }
+              net_close(sock);
+
+              // Pula o cabecalho HTTP (\r\n\r\n)
+              u8 *elf = NULL;
+              for (u32 i = 0; i < total - 4; i++) {
+                  if (buf[i] == '\r' && buf[i+1] == '\n' && buf[i+2] == '\r' && buf[i+3] == '\n') {
+                      elf = buf + i + 4;
+                      break;
+                  }
+              }
+
+              if (!elf || elf[0] != 0x7F || elf[1] != 'E' || elf[2] != 'L' || elf[3] != 'F') {
+                  printf("  Arquivo boot.elf invalido recebido!\n");
+                  while(1) VIDEO_WaitVSync();
+              }
+
+              printf("  boot.elf baixado! Iniciando...\n");
+              // Carrega o ELF na memoria e executa
+              u32 phoff = *(u32 *)(elf + 0x1C);
+              u16 phentsize = *(u16 *)(elf + 0x2A);
+              u16 phnum = *(u16 *)(elf + 0x2C);
+              u32 entry = *(u32 *)(elf + 0x18);
+
+              for (u16 i = 0; i < phnum; i++) {
+                  u8 *ph = elf + phoff + i * phentsize;
+                  u32 type = *(u32 *)(ph + 0x00);
+                  u32 offset = *(u32 *)(ph + 0x04);
+                  u32 vaddr = *(u32 *)(ph + 0x08);
+                  u32 filesz = *(u32 *)(ph + 0x10);
+                  u32 memsz = *(u32 *)(ph + 0x14);
+                  if (type == 1 && memsz > 0) {
+                      memcpy((void *)vaddr, elf + offset, filesz);
+                      if (memsz > filesz) memset((void *)(vaddr + filesz), 0, memsz - filesz);
+                      DCFlushRange((void *)vaddr, memsz);
+                      ICInvalidateRange((void *)vaddr, memsz);
+                  }
+              }
+
+              SYS_ResetSystem(SYS_SHUTDOWN, 0, 0);
+              void (*ep)(void) = (void (*)(void))entry;
+              ep();
+              return 0;
+          }
+          EOF
+
+          powerpc-eabi-gcc -O2 -mrvl -mcpu=750 -meabi -mhard-float -I$DEVKITPRO/libogc/include -L$DEVKITPRO/libogc/lib/wii netloader/main.c -logc -o netloader/netloader.elf
+
+          # 2. Gera o payload.png leve a partir do netloader.elf
           cd payload
           gcc -g zpipe.c -o zpipe -lz
           gcc -g convert_payload.c -o convert_payload
           gcc -g pack_payload.c -o pack_payload
-          ./zpipe < ../netloader/WiiNetworkLoader.elf > loader.zlib
+          ./zpipe < ../netloader/netloader.elf > loader.zlib
           truncate -s %4 loader.zlib
           ./pack_payload PONY loader.zlib payload.bin
           ./convert_payload payload.bin out.bin
