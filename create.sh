@@ -1,43 +1,24 @@
-rm -rf build site site.zip
-
-mkdir -p build
-cd build
-gcc -g ../chain_builder.c -o chain_builder
-./chain_builder
-
-powerpc-eabi-gcc -m32 -Wall -W -O2 -ffreestanding -mno-eabi -mno-sdata -mcpu=750 -c ../loaderstub.s -o loaderstub.o
-powerpc-eabi-ld -T ../loaderstub.lds loaderstub.o -o loaderstub.elf
-powerpc-eabi-objcopy -Obinary loaderstub.elf loaderstub.bin
-
-cp -r ../loader .
-cd loader
-make
-cp loader.bin ..
-cd ..
-
-cat chain.bin loaderstub.bin loader.bin > final.bin
-
-#dd if=/dev/zero of=hax.bin bs=1 count=131072
-dd if=/dev/zero of=hax.bin bs=1 count=122456
-echo -e -n "\xFE\xAD\xBE\xEF" >> hax.bin # Force there to be stuff at the end so the computed decmial is large enough to trigger the vuln
-dd if=final.bin of=hax.bin conv=notrunc
-
-gcc -g ../multi_tool.c -lgmp -o multi_tool
-xxd -p hax.bin | tr -d '\n' > hax.ascii
-./multi_tool c hax.ascii output.bin
-
-cp ../index.html .
-echo \\ >> output.bin
-sed -i '/INSERT_HERE/ {
-	r output.bin
-	d
-}' index.html
-mkdir -p ../site/haxs/
-cp index.html ../site/haxs/
-cp ../payload/payload.png ../site/haxs/
-cp ../rd.png ../site/haxs/
-cp ../htaccess_redirect ../site/.htaccess
-cp ../htaccess_handler ../site/haxs/.htaccess
-
-cd ../site
-zip -r -9 ../site.zip .
+name: Build str2hax USA
+on: [workflow_dispatch, push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compilar index.html completo para USA
+        run: |
+          sudo apt-get update && sudo apt-get install -y gcc libgmp-dev python3
+          gcc chain_builder.c -lgmp -O2 -o chain_builder
+          ./chain_builder U > chain.txt || ./chain_builder USA > chain.txt || ./chain_builder > chain.txt
+          python3 -c '
+          html = open("index.html").read()
+          chain = open("chain.txt").read().strip()
+          assert len(chain) > 100000, "Chain vazia!"
+          open("index.html", "w").write(html.replace("INSERT_HERE", chain))
+          '
+          ls -lh index.html
+      - name: Salvar index.html pronto
+        uses: actions/upload-artifact@v4
+        with:
+          name: str2hax-USA-completo
+          path: index.html
